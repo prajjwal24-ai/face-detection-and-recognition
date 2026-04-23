@@ -233,3 +233,65 @@ elif choice == "Train Model":
             recognizer.write('trainer.yml')
             
             st.success(f"Neural Network successfully trained on {len(np.unique(ids))} unique IDs!")
+
+# --- Module 3: Live Recognition ---
+elif choice == "Live Recognition":
+    st.subheader("Stage 3: Live Recognition Feed")
+    
+    run_camera = st.checkbox("Initialize Camera Link")
+    frame_placeholder = st.empty()
+    
+    if run_camera:
+        if not os.path.exists('trainer.yml'):
+            st.error("Model not found! Please train the model first.")
+        else:
+            # --- Load Names from JSON dynamically ---
+            names_dict = {}
+            if os.path.exists("names.json"):
+                with open("names.json", "r") as f:
+                    try:
+                        names_dict = json.load(f)
+                    except json.JSONDecodeError:
+                        names_dict = {}
+            # ----------------------------------------
+
+            recognizer = cv2.face.LBPHFaceRecognizer_create()
+            recognizer.read('trainer.yml')
+            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            face_cascade = cv2.CascadeClassifier(cascade_path)
+            
+            cap = cv2.VideoCapture(0)
+            
+            while run_camera:
+                ret, frame = cap.read()
+                if not ret:
+                    st.error("Failed to grab frame.")
+                    break
+                    
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                faces = face_cascade.detectMultiScale(gray, 1.2, 5, minSize=(30, 30))
+                
+                for (x, y, w, h) in faces:
+                    id_predicted, distance = recognizer.predict(gray[y:y+h, x:x+w])
+                    
+                    if distance < 80:
+                        # Fetch name dynamically (keys in JSON are stored as strings)
+                        name = names_dict.get(str(id_predicted), f"ID {id_predicted}")
+                        confidence = f"  {round(100 - distance)}%"
+                        color = (0, 255, 255) # Neon Cyan for recognized
+                    else:
+                        name = "Unknown Target"
+                        confidence = f"  {round(100 - distance)}%"
+                        color = (0, 0, 255) # Red for unknown
+                        
+                    cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
+                    
+                    # Draw a solid background box for the text to make it pop
+                    cv2.rectangle(frame, (x, y-35), (x+w, y), color, cv2.FILLED)
+                    cv2.putText(frame, name, (x+5, y-10), cv2.FONT_HERSHEY_DUPLEX, 0.7, (0,0,0), 2)
+                    cv2.putText(frame, confidence, (x+5, y+h-10), cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1)
+                    
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame_placeholder.image(frame_rgb, channels="RGB")
+                
+            cap.release()
